@@ -13,44 +13,55 @@ st.set_page_config(page_title='Hypertension Predictor', layout='centered')
 # Load data
 df = pd.read_csv('hypertension_dataset.csv')
 
-# Clean column names (strip spaces, replace spaces with underscores, remove weird chars)
+# Clean column names
 df.columns = df.columns.str.strip().str.replace(' ', '_').str.replace(r'[\n\r\t]', '', regex=True)
 
 # Define columns
 numeric_cols = ['Age', 'Salt_Intake', 'Stress_Score', 'Sleep_Duration', 'BMI']
 cat_cols = ['BP_History', 'Medication', 'Family_History', 'Exercise_Level', 'Smoking_Status']
 
-# Convert numeric columns, coerce errors to NaN, fill NaNs with median
+# Convert numeric columns
 for col in numeric_cols:
-    df[col] = pd.to_numeric(df[col], errors='coerce')
-    median_val = df[col].median()
-    df[col].fillna(median_val, inplace=True)
+    if col not in df.columns:
+        st.error(f"Missing numeric column: {col}")
+    else:
+        df[col] = pd.to_numeric(df[col], errors='coerce')
+        df[col].fillna(df[col].median(), inplace=True)
 
-# Convert categorical columns to string (to avoid issues with mixed types)
+# Convert categorical columns to string
 for col in cat_cols:
-    df[col] = df[col].astype(str).str.strip()
+    if col not in df.columns:
+        st.error(f"Missing categorical column: {col}")
+    else:
+        df[col] = df[col].astype(str).str.strip()
 
-# Remove rows with missing target or map target properly
-df = df[df['Has_Hypertension'].isin(['Yes', 'No'])].copy()
-y = df['Has_Hypertension'].map({'Yes': 1, 'No': 0})
+# Clean target column
+if 'Has_Hypertension' not in df.columns:
+    st.error("Missing target column: Has_Hypertension")
+else:
+    df = df[df['Has_Hypertension'].isin(['Yes', 'No'])].copy()
+    y = df['Has_Hypertension'].map({'Yes': 1, 'No': 0})
 
-# Prepare feature matrix X with the cleaned columns
-X = df[numeric_cols + cat_cols]
+# Build X
+feature_cols = numeric_cols + cat_cols
+if not set(feature_cols).issubset(set(df.columns)):
+    missing_feats = set(feature_cols) - set(df.columns)
+    st.error(f"Missing feature columns: {missing_feats}")
 
-# Check for any remaining NaNs (should be none, but just in case)
+X = df[feature_cols]
+
+# Final check for NaNs
 if X.isnull().any().any():
-    st.error("Warning: Found NaNs in features after cleaning. Filling with medians or mode now.")
-
+    st.warning("Found NaNs in X — filling numeric cols with median now")
     for col in numeric_cols:
         if X[col].isnull().any():
             X[col].fillna(X[col].median(), inplace=True)
     for col in cat_cols:
         if X[col].isnull().any():
-            # Fill missing categorical with most frequent value
             mode_val = X[col].mode()[0]
             X[col].fillna(mode_val, inplace=True)
 
-# Define preprocessor and pipeline
+# Define pipeline
 preprocessor = ColumnTransformer([
     ('num', StandardScaler(), numeric_cols),
     ('cat', OneHotEncoder(handle_unknown='ignore', sparse_output=False), cat_cols)
@@ -66,18 +77,19 @@ def train_and_save():
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y
     )
+    # Check shapes
+    st.write("X_train shape:", X_train.shape)
+    st.write("y_train distribution:", y_train.value_counts())
     model_pipeline.fit(X_train, y_train)
     joblib.dump(model_pipeline, 'hypertension_model.pkl')
     return model_pipeline
 
 model = train_and_save()
 
+# UI parts
 st.title('Hypertension Predictor')
-
-st.write("Columns in dataset:", df.columns.tolist())
-st.write("BMI sample data:", df['BMI'].head())
-st.write("BMI dtype:", df['BMI'].dtype)
-st.write("Salt_Intake sample data:", df['Salt_Intake'].head())
+st.write("Columns:", df.columns.tolist())
+st.write("Sample BMI:", df['BMI'].head())
 st.write("Salt_Intake dtype:", df['Salt_Intake'].dtype)
 
 with st.sidebar:
@@ -106,12 +118,15 @@ input_df = pd.DataFrame([{
 }])
 
 if st.button('Predict'):
-    prob = model.predict_proba(input_df)[0][1]
-    pred = model.predict(input_df)[0]
-    st.subheader('Prediction')
-    st.write('Has Hypertension: Yes' if pred == 1 else 'Has Hypertension: No')
-    st.progress(int(prob * 100))
-    st.write(f'Probability of hypertension: {prob * 100:.2f}%')
+    try:
+        prob = model.predict_proba(input_df)[0][1]
+        pred = model.predict(input_df)[0]
+        st.subheader('Prediction')
+        st.write('Has Hypertension: Yes' if pred == 1 else 'Has Hypertension: No')
+        st.progress(int(prob * 100))
+        st.write(f'Probability of hypertension: {prob * 100:.2f}%')
+    except Exception as e:
+        st.error(f"Prediction failed: {e}")
 
 if st.button('Retrain model'):
     with st.spinner('Retraining...'):
@@ -120,3 +135,4 @@ if st.button('Retrain model'):
 
 st.markdown('---')
 st.write(f'Dataset rows: {len(df)}')
+
