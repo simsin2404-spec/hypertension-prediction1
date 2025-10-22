@@ -11,9 +11,15 @@ import streamlit as st
 #st.set_page_config(page_title='Hypertension Predictor', layout='centered')
 
 df = pd.read_csv('hypertension_dataset.csv')
-st.write("Available columns:", df.columns.tolist())
+#st.write("Available columns:", df.columns.tolist())
 
 df.columns = df.columns.str.strip().str.replace(' ', '_')
+
+#df = pd.read_csv('hypertension_dataset.csv')
+st.write("Columns immediately after loading:", df.columns.tolist())
+st.write("BMI column sample right after loading:", df['BMI'].head())
+st.write("BMI dtype right after loading:", df['BMI'].dtype)
+
 '''
 #df['Salt_Intake'] = pd.to_numeric(df['Salt_Intake'], errors='coerce')  
 
@@ -97,6 +103,7 @@ st.markdown('---')
 st.write('Dataset rows:', len(df))
 
 '''
+
 
 
 
