@@ -1,4 +1,3 @@
-import streamlit as st
 import pandas as pd
 import numpy as np
 from sklearn.pipeline import Pipeline
@@ -7,6 +6,7 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 import joblib
+import streamlit as st
 
 st.set_page_config(page_title='Hypertension Predictor', layout='centered')
 st.title('Hypertension Predictor')
@@ -35,14 +35,14 @@ if missing_feats:
     st.error(f"Missing expected columns: {missing_feats}")
     st.stop()
 
-# Convert numeric columns
+# Convert numeric columns safely
 for col in expected_numeric:
     df[col] = pd.to_numeric(df[col], errors='coerce')
 
-# Drop rows with missing target
+# Drop rows with missing target (if any)
 df = df.dropna(subset=[expected_target])
 
-# Impute missing values
+# Impute missing values in numeric columns with median, categorical columns with mode
 df[expected_numeric] = df[expected_numeric].fillna(df[expected_numeric].median(numeric_only=True))
 for col in expected_cat:
     df[col] = df[col].fillna(df[col].mode()[0])
@@ -52,9 +52,16 @@ X = df[expected_numeric + expected_cat]
 y = df[expected_target].map({'Yes': 1, 'No': 0})  # Convert to 1/0
 
 # Debugging output before training
-st.write("Dataset columns before training:", df.columns.tolist())
 st.write("Feature matrix X shape:", X.shape)
 st.write("Target vector y distribution:", y.value_counts())
+
+# Check for NaNs before training
+if X.isnull().any().any():
+    st.error("NaN values detected in X features. Please clean the data before training.")
+    st.stop()
+if y.isnull().any():
+    st.error("NaN values detected in y target. Please clean the data before training.")
+    st.stop()
 
 # Preprocessing pipeline
 preprocessor = ColumnTransformer([
@@ -69,30 +76,32 @@ model_pipeline = Pipeline([
 
 @st.cache_resource
 def train_and_save():
-    # Check for NaNs before splitting
-    if X.isnull().any().any():
-        st.error("NaN values detected in X features. Please clean the data before training.")
-        return None
-    if y.isnull().any():
-        st.error("NaN values detected in y target. Please clean the data before training.")
-        return None
+    try:
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.2, random_state=42, stratify=y
+        )
+        st.write("X_train shape:", X_train.shape)
+        st.write("y_train distribution:", y_train.value_counts())
+        
+        # Check for NaNs in X_train or y_train
+        if X_train.isnull().any().any():
+            st.error("NaN values detected in X_train!")
+            return None
+        if y_train.isnull().any():
+            st.error("NaN values detected in y_train!")
+            return None
+        
+        # Fit model
+        model_pipeline.fit(X_train, y_train)
+        joblib.dump(model_pipeline, 'hypertension_model.pkl')
+        return model_pipeline
+    except Exception as e:
+        st.error(f"Model training failed: {e}")
+        st.stop()
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y
-    )
-    
-    # Debug output for training data
-    st.write("X_train shape:", X_train.shape)
-    st.write("y_train distribution:", y_train.value_counts())
-
-    model_pipeline.fit(X_train, y_train)
-    joblib.dump(model_pipeline, 'hypertension_model.pkl')
-    return model_pipeline
-
-# Train and save the model
 model = train_and_save()
 
-# UI parts
+# Sidebar inputs for predictions
 with st.sidebar:
     age = st.number_input('Age', int(df['Age'].min()), int(df['Age'].max()), int(df['Age'].median()))
     salt = st.number_input('Salt Intake (grams/day)', float(df['Salt_Intake'].min()), float(df['Salt_Intake'].max()), float(df['Salt_Intake'].median()), step=0.1, format="%.1f")
@@ -105,6 +114,7 @@ with st.sidebar:
     exercise = st.selectbox('Exercise Level', sorted(df['Exercise_Level'].unique().tolist()))
     smoke = st.selectbox('Smoking Status', sorted(df['Smoking_Status'].unique().tolist()))
 
+# Input data frame for prediction
 input_df = pd.DataFrame([{
     'Age': age,
     'Salt_Intake': salt,
