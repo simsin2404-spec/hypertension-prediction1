@@ -35,27 +35,39 @@ if missing_feats:
     st.error(f"Missing expected columns: {missing_feats}")
     st.stop()
 
-# Convert numeric columns safely
+# Convert numeric columns safely to float
 for col in expected_numeric:
+    if col not in df.columns:
+        st.error(f"Missing expected column: {col}")
+        st.stop()
+    # Convert column to numeric, invalid parsing will turn into NaN
     df[col] = pd.to_numeric(df[col], errors='coerce')
 
-# Drop rows with missing target (if any)
-df = df.dropna(subset=[expected_target])
-
-# Impute missing values in numeric columns with median, categorical columns with mode
-df[expected_numeric] = df[expected_numeric].fillna(df[expected_numeric].median(numeric_only=True))
+# Ensure all categorical columns are of type 'str'
 for col in expected_cat:
-    df[col] = df[col].fillna(df[col].mode()[0])
+    if col not in df.columns:
+        st.error(f"Missing expected column: {col}")
+        st.stop()
+    df[col] = df[col].astype(str).str.strip()  # Make sure they're treated as strings
 
-# Prepare features and target
+# Clean target column
+if 'Has_Hypertension' not in df.columns:
+    st.error("Missing target column: Has_Hypertension")
+    st.stop()
+else:
+    # Drop rows where the target column is NaN or invalid
+    df = df[df['Has_Hypertension'].isin(['Yes', 'No'])].copy()
+    y = df['Has_Hypertension'].map({'Yes': 1, 'No': 0})
+
+# Prepare feature matrix X
 X = df[expected_numeric + expected_cat]
-y = df[expected_target].map({'Yes': 1, 'No': 0})  # Convert to 1/0
 
-# Debugging output before training
-st.write("Feature matrix X shape:", X.shape)
-st.write("Target vector y distribution:", y.value_counts())
+# Handle any remaining NaNs in features (fill them)
+X[expected_numeric] = X[expected_numeric].fillna(X[expected_numeric].median(numeric_only=True))
+for col in expected_cat:
+    X[col] = X[col].fillna(X[col].mode()[0])
 
-# Check for NaNs before training
+# Check for NaNs before proceeding with model training
 if X.isnull().any().any():
     st.error("NaN values detected in X features. Please clean the data before training.")
     st.stop()
@@ -76,32 +88,27 @@ model_pipeline = Pipeline([
 
 @st.cache_resource
 def train_and_save():
-    try:
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42, stratify=y
-        )
-        st.write("X_train shape:", X_train.shape)
-        st.write("y_train distribution:", y_train.value_counts())
-        
-        # Check for NaNs in X_train or y_train
-        if X_train.isnull().any().any():
-            st.error("NaN values detected in X_train!")
-            return None
-        if y_train.isnull().any():
-            st.error("NaN values detected in y_train!")
-            return None
-        
-        # Fit model
-        model_pipeline.fit(X_train, y_train)
-        joblib.dump(model_pipeline, 'hypertension_model.pkl')
-        return model_pipeline
-    except Exception as e:
-        st.error(f"Model training failed: {e}")
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42, stratify=y
+    )
+    
+    # Debugging information for training
+    st.write("X_train shape:", X_train.shape)
+    st.write("y_train distribution:", y_train.value_counts())
+    
+    # Ensure no NaNs in X_train or y_train
+    if X_train.isnull().any().any() or y_train.isnull().any():
+        st.error("NaN values detected in X_train or y_train!")
         st.stop()
+
+    # Fit model
+    model_pipeline.fit(X_train, y_train)
+    joblib.dump(model_pipeline, 'hypertension_model.pkl')
+    return model_pipeline
 
 model = train_and_save()
 
-# Sidebar inputs for predictions
+# Sidebar for inputs
 with st.sidebar:
     age = st.number_input('Age', int(df['Age'].min()), int(df['Age'].max()), int(df['Age'].median()))
     salt = st.number_input('Salt Intake (grams/day)', float(df['Salt_Intake'].min()), float(df['Salt_Intake'].max()), float(df['Salt_Intake'].median()), step=0.1, format="%.1f")
@@ -114,7 +121,6 @@ with st.sidebar:
     exercise = st.selectbox('Exercise Level', sorted(df['Exercise_Level'].unique().tolist()))
     smoke = st.selectbox('Smoking Status', sorted(df['Smoking_Status'].unique().tolist()))
 
-# Input data frame for prediction
 input_df = pd.DataFrame([{
     'Age': age,
     'Salt_Intake': salt,
