@@ -35,7 +35,7 @@ if missing_feats:
     st.error(f"Missing expected columns: {missing_feats}")
     st.stop()
 
-# Convert numeric columns safely
+# Convert numeric columns
 for col in expected_numeric:
     df[col] = pd.to_numeric(df[col], errors='coerce')
 
@@ -51,6 +51,11 @@ for col in expected_cat:
 X = df[expected_numeric + expected_cat]
 y = df[expected_target].map({'Yes': 1, 'No': 0})  # Convert to 1/0
 
+# Debugging output before training
+st.write("Dataset columns before training:", df.columns.tolist())
+st.write("Feature matrix X shape:", X.shape)
+st.write("Target vector y distribution:", y.value_counts())
+
 # Preprocessing pipeline
 preprocessor = ColumnTransformer([
     ('num', StandardScaler(), expected_numeric),
@@ -64,20 +69,30 @@ model_pipeline = Pipeline([
 
 @st.cache_resource
 def train_and_save():
-    try:
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42, stratify=y
-        )
-        model_pipeline.fit(X_train, y_train)
-        joblib.dump(model_pipeline, 'hypertension_model.pkl')
-        return model_pipeline
-    except Exception as e:
-        st.error(f"Model training failed: {e}")
-        st.stop()
+    # Check for NaNs before splitting
+    if X.isnull().any().any():
+        st.error("NaN values detected in X features. Please clean the data before training.")
+        return None
+    if y.isnull().any():
+        st.error("NaN values detected in y target. Please clean the data before training.")
+        return None
 
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42, stratify=y
+    )
+    
+    # Debug output for training data
+    st.write("X_train shape:", X_train.shape)
+    st.write("y_train distribution:", y_train.value_counts())
+
+    model_pipeline.fit(X_train, y_train)
+    joblib.dump(model_pipeline, 'hypertension_model.pkl')
+    return model_pipeline
+
+# Train and save the model
 model = train_and_save()
 
-# Sidebar inputs
+# UI parts
 with st.sidebar:
     age = st.number_input('Age', int(df['Age'].min()), int(df['Age'].max()), int(df['Age'].median()))
     salt = st.number_input('Salt Intake (grams/day)', float(df['Salt_Intake'].min()), float(df['Salt_Intake'].max()), float(df['Salt_Intake'].median()), step=0.1, format="%.1f")
@@ -90,7 +105,6 @@ with st.sidebar:
     exercise = st.selectbox('Exercise Level', sorted(df['Exercise_Level'].unique().tolist()))
     smoke = st.selectbox('Smoking Status', sorted(df['Smoking_Status'].unique().tolist()))
 
-# Predict
 input_df = pd.DataFrame([{
     'Age': age,
     'Salt_Intake': salt,
@@ -115,11 +129,10 @@ if st.button('Predict'):
     except Exception as e:
         st.error(f"Prediction failed: {e}")
 
-# Retrain option
 if st.button('Retrain model'):
     with st.spinner('Retraining...'):
         model = train_and_save()
     st.success('Model retrained and saved to hypertension_model.pkl')
 
 st.markdown('---')
-st.write('Dataset size:', len(df))
+st.write('Dataset rows:', len(df))
