@@ -1,3 +1,4 @@
+import streamlit as st
 import pandas as pd
 import numpy as np
 from sklearn.pipeline import Pipeline
@@ -6,65 +7,54 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 import joblib
-import streamlit as st
 
 st.set_page_config(page_title='Hypertension Predictor', layout='centered')
+st.title('Hypertension Predictor')
 
-# Load data
-df = pd.read_csv('hypertension_dataset.csv')
+# Load and clean data
+try:
+    df = pd.read_csv('hypertension_dataset.csv')
+    df.columns = df.columns.str.strip().str.replace(' ', '_').str.replace(r'\W', '', regex=True)
+    st.success("Dataset loaded successfully.")
+except Exception as e:
+    st.error(f"Failed to load dataset: {e}")
+    st.stop()
 
-# Clean column names
-df.columns = df.columns.str.strip().str.replace(' ', '_').str.replace(r'[\n\r\t]', '', regex=True)
+# Show debug columns
+st.write("Dataset Columns (cleaned):", df.columns.tolist())
 
-# Define columns
-numeric_cols = ['Age', 'Salt_Intake', 'Stress_Score', 'Sleep_Duration', 'BMI']
-cat_cols = ['BP_History', 'Medication', 'Family_History', 'Exercise_Level', 'Smoking_Status']
+# Check for expected features
+expected_numeric = ['Age', 'Salt_Intake', 'Stress_Score', 'Sleep_Duration', 'BMI']
+expected_cat = ['BP_History', 'Medication', 'Family_History', 'Exercise_Level', 'Smoking_Status']
+expected_target = 'Has_Hypertension'
 
-# Convert numeric columns
-for col in numeric_cols:
-    if col not in df.columns:
-        st.error(f"Missing numeric column: {col}")
-    else:
-        df[col] = pd.to_numeric(df[col], errors='coerce')
-        df[col].fillna(df[col].median(), inplace=True)
+all_expected = expected_numeric + expected_cat + [expected_target]
+missing_feats = [col for col in all_expected if col not in df.columns]
 
-# Convert categorical columns to string
-for col in cat_cols:
-    if col not in df.columns:
-        st.error(f"Missing categorical column: {col}")
-    else:
-        df[col] = df[col].astype(str).str.strip()
+if missing_feats:
+    st.error(f"Missing expected columns: {missing_feats}")
+    st.stop()
 
-# Clean target column
-if 'Has_Hypertension' not in df.columns:
-    st.error("Missing target column: Has_Hypertension")
-else:
-    df = df[df['Has_Hypertension'].isin(['Yes', 'No'])].copy()
-    y = df['Has_Hypertension'].map({'Yes': 1, 'No': 0})
+# Convert numeric columns safely
+for col in expected_numeric:
+    df[col] = pd.to_numeric(df[col], errors='coerce')
 
-# Build X
-feature_cols = numeric_cols + cat_cols
-if not set(feature_cols).issubset(set(df.columns)):
-    missing_feats = set(feature_cols) - set(df.columns)
-    st.error(f"Missing feature columns: {missing_feats}")
+# Drop rows with missing target
+df = df.dropna(subset=[expected_target])
 
-X = df[feature_cols]
+# Impute missing values
+df[expected_numeric] = df[expected_numeric].fillna(df[expected_numeric].median(numeric_only=True))
+for col in expected_cat:
+    df[col] = df[col].fillna(df[col].mode()[0])
 
-# Final check for NaNs
-if X.isnull().any().any():
-    st.warning("Found NaNs in X — filling numeric cols with median now")
-    for col in numeric_cols:
-        if X[col].isnull().any():
-            X[col].fillna(X[col].median(), inplace=True)
-    for col in cat_cols:
-        if X[col].isnull().any():
-            mode_val = X[col].mode()[0]
-            X[col].fillna(mode_val, inplace=True)
+# Prepare features and target
+X = df[expected_numeric + expected_cat]
+y = df[expected_target].map({'Yes': 1, 'No': 0})  # Convert to 1/0
 
-# Define pipeline
+# Preprocessing pipeline
 preprocessor = ColumnTransformer([
-    ('num', StandardScaler(), numeric_cols),
-    ('cat', OneHotEncoder(handle_unknown='ignore', sparse_output=False), cat_cols)
+    ('num', StandardScaler(), expected_numeric),
+    ('cat', OneHotEncoder(handle_unknown='ignore', sparse_output=False), expected_cat)
 ])
 
 model_pipeline = Pipeline([
@@ -74,24 +64,20 @@ model_pipeline = Pipeline([
 
 @st.cache_resource
 def train_and_save():
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y
-    )
-    # Check shapes
-    st.write("X_train shape:", X_train.shape)
-    st.write("y_train distribution:", y_train.value_counts())
-    model_pipeline.fit(X_train, y_train)
-    joblib.dump(model_pipeline, 'hypertension_model.pkl')
-    return model_pipeline
+    try:
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.2, random_state=42, stratify=y
+        )
+        model_pipeline.fit(X_train, y_train)
+        joblib.dump(model_pipeline, 'hypertension_model.pkl')
+        return model_pipeline
+    except Exception as e:
+        st.error(f"Model training failed: {e}")
+        st.stop()
 
 model = train_and_save()
 
-# UI parts
-st.title('Hypertension Predictor')
-st.write("Columns:", df.columns.tolist())
-st.write("Sample BMI:", df['BMI'].head())
-st.write("Salt_Intake dtype:", df['Salt_Intake'].dtype)
-
+# Sidebar inputs
 with st.sidebar:
     age = st.number_input('Age', int(df['Age'].min()), int(df['Age'].max()), int(df['Age'].median()))
     salt = st.number_input('Salt Intake (grams/day)', float(df['Salt_Intake'].min()), float(df['Salt_Intake'].max()), float(df['Salt_Intake'].median()), step=0.1, format="%.1f")
@@ -104,6 +90,7 @@ with st.sidebar:
     exercise = st.selectbox('Exercise Level', sorted(df['Exercise_Level'].unique().tolist()))
     smoke = st.selectbox('Smoking Status', sorted(df['Smoking_Status'].unique().tolist()))
 
+# Predict
 input_df = pd.DataFrame([{
     'Age': age,
     'Salt_Intake': salt,
@@ -124,15 +111,15 @@ if st.button('Predict'):
         st.subheader('Prediction')
         st.write('Has Hypertension: Yes' if pred == 1 else 'Has Hypertension: No')
         st.progress(int(prob * 100))
-        st.write(f'Probability of hypertension: {prob * 100:.2f}%')
+        st.write('Probability of hypertension: {:.2f}%'.format(prob * 100))
     except Exception as e:
         st.error(f"Prediction failed: {e}")
 
+# Retrain option
 if st.button('Retrain model'):
     with st.spinner('Retraining...'):
         model = train_and_save()
     st.success('Model retrained and saved to hypertension_model.pkl')
 
 st.markdown('---')
-st.write(f'Dataset rows: {len(df)}')
-
+st.write('Dataset size:', len(df))
