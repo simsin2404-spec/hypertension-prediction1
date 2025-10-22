@@ -1,3 +1,4 @@
+st.set_page_config(page_title='Hypertension Predictor', layout='centered')
 import pandas as pd
 import numpy as np
 from sklearn.pipeline import Pipeline
@@ -7,10 +8,10 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 import joblib
 import streamlit as st
-st.set_page_config(page_title='Hypertension Predictor', layout='centered')
+#st.set_page_config(page_title='Hypertension Predictor', layout='centered')
 
 df = pd.read_csv('hypertension_dataset.csv')
-st.write("Actual columns:", df.columns.tolist())
+#st.write("Actual columns:", df.columns.tolist())
 df.columns = df.columns.str.strip().str.replace(' ', '_')
 
 #df['Salt_Intake'] = pd.to_numeric(df['Salt_Intake'], errors='coerce')  
@@ -93,6 +94,7 @@ if st.button('Retrain model'):
 
 st.markdown('---')
 st.write('Dataset rows:', len(df))
+
 
 
 
