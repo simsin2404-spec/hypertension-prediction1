@@ -39,6 +39,10 @@ st.set_page_config(page_title='Hypertension Predictor', layout='centered')
 
 
 st.title('Hypertension Predictor')
+st.write("Columns:", df.columns.tolist())
+st.write("BMI column sample:", df['BMI'].head())
+st.write("BMI column type:", df['BMI'].dtype)
+
 
 with st.sidebar:
     age = st.number_input('Age', int(df['Age'].min()), int(df['Age'].max()), int(df['Age'].median()))
@@ -80,5 +84,6 @@ if st.button('Retrain model'):
 
 st.markdown('---')
 st.write('Dataset rows:', len(df))
+
 
 
