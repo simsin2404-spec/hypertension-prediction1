@@ -20,8 +20,11 @@ except Exception as e:
     st.error(f"Failed to load dataset: {e}")
     st.stop()
 
-# Debug: Show cleaned column names
+# Debugging: Show cleaned column names
 st.write("Dataset Columns (cleaned):", df.columns.tolist())
+
+# Print column types to check for issues
+st.write("Column Data Types:", df.dtypes)
 
 # Check for expected features
 expected_numeric = ['Age', 'Salt_Intake', 'Stress_Score', 'Sleep_Duration', 'BMI']
@@ -41,7 +44,12 @@ for col in expected_numeric:
         st.error(f"Missing expected column: {col}")
         st.stop()
     
-    # Try to convert column to numeric, invalid parsing will turn into NaN
+    # Check for non-numeric values before conversion
+    st.write(f"Checking column: {col} for non-numeric values")
+    if df[col].apply(lambda x: isinstance(x, str)).any():  # Check if there are any strings
+        st.warning(f"Column {col} has string values that will be converted to NaN")
+    
+    # Convert column to numeric, invalid parsing will turn into NaN
     df[col] = pd.to_numeric(df[col], errors='coerce')
     if df[col].isnull().any():
         st.warning(f"Column {col} contains non-numeric values and has been converted to NaN. Filling NaN with median.")
@@ -92,23 +100,27 @@ model_pipeline = Pipeline([
 
 @st.cache_resource
 def train_and_save():
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y
-    )
-    
-    # Debugging information for training
-    st.write("X_train shape:", X_train.shape)
-    st.write("y_train distribution:", y_train.value_counts())
-    
-    # Ensure no NaNs in X_train or y_train
-    if X_train.isnull().any().any() or y_train.isnull().any():
-        st.error("NaN values detected in X_train or y_train!")
-        st.stop()
+    try:
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.2, random_state=42, stratify=y
+        )
+        
+        # Debugging information for training
+        st.write("X_train shape:", X_train.shape)
+        st.write("y_train distribution:", y_train.value_counts())
+        
+        # Ensure no NaNs in X_train or y_train
+        if X_train.isnull().any().any() or y_train.isnull().any():
+            st.error("NaN values detected in X_train or y_train!")
+            st.stop()
 
-    # Fit model
-    model_pipeline.fit(X_train, y_train)
-    joblib.dump(model_pipeline, 'hypertension_model.pkl')
-    return model_pipeline
+        # Fit model
+        model_pipeline.fit(X_train, y_train)
+        joblib.dump(model_pipeline, 'hypertension_model.pkl')
+        return model_pipeline
+    except Exception as e:
+        st.error(f"Model training failed: {e}")
+        st.stop()
 
 # Train and save the model
 model = train_and_save()
