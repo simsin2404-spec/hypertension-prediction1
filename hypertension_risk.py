@@ -10,28 +10,47 @@ import streamlit as st
 
 st.set_page_config(page_title='Hypertension Predictor', layout='centered')
 
-# Load data and clean column names
+# Load data
 df = pd.read_csv('hypertension_dataset.csv')
+
+# Clean column names (strip spaces, replace spaces with underscores, remove weird chars)
 df.columns = df.columns.str.strip().str.replace(' ', '_').str.replace(r'[\n\r\t]', '', regex=True)
 
-# Convert numeric columns to numeric dtype, coerce errors to NaN, then fill with median
+# Define columns
 numeric_cols = ['Age', 'Salt_Intake', 'Stress_Score', 'Sleep_Duration', 'BMI']
+cat_cols = ['BP_History', 'Medication', 'Family_History', 'Exercise_Level', 'Smoking_Status']
+
+# Convert numeric columns, coerce errors to NaN, fill NaNs with median
 for col in numeric_cols:
     df[col] = pd.to_numeric(df[col], errors='coerce')
     median_val = df[col].median()
     df[col].fillna(median_val, inplace=True)
 
-# Check for missing columns in categorical columns too
-cat_cols = ['BP_History', 'Medication', 'Family_History', 'Exercise_Level', 'Smoking_Status']
+# Convert categorical columns to string (to avoid issues with mixed types)
 for col in cat_cols:
-    if col not in df.columns:
-        st.error(f"Missing expected categorical column: {col}")
+    df[col] = df[col].astype(str).str.strip()
 
-# Create X and y datasets
-X = df[numeric_cols + cat_cols]
+# Remove rows with missing target or map target properly
+df = df[df['Has_Hypertension'].isin(['Yes', 'No'])].copy()
 y = df['Has_Hypertension'].map({'Yes': 1, 'No': 0})
 
-# Build preprocessor and model pipeline
+# Prepare feature matrix X with the cleaned columns
+X = df[numeric_cols + cat_cols]
+
+# Check for any remaining NaNs (should be none, but just in case)
+if X.isnull().any().any():
+    st.error("Warning: Found NaNs in features after cleaning. Filling with medians or mode now.")
+
+    for col in numeric_cols:
+        if X[col].isnull().any():
+            X[col].fillna(X[col].median(), inplace=True)
+    for col in cat_cols:
+        if X[col].isnull().any():
+            # Fill missing categorical with most frequent value
+            mode_val = X[col].mode()[0]
+            X[col].fillna(mode_val, inplace=True)
+
+# Define preprocessor and pipeline
 preprocessor = ColumnTransformer([
     ('num', StandardScaler(), numeric_cols),
     ('cat', OneHotEncoder(handle_unknown='ignore', sparse_output=False), cat_cols)
@@ -44,8 +63,9 @@ model_pipeline = Pipeline([
 
 @st.cache_resource
 def train_and_save():
-    # Use global df here if needed
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42, stratify=y
+    )
     model_pipeline.fit(X_train, y_train)
     joblib.dump(model_pipeline, 'hypertension_model.pkl')
     return model_pipeline
@@ -54,7 +74,6 @@ model = train_and_save()
 
 st.title('Hypertension Predictor')
 
-# Show some info about dataset
 st.write("Columns in dataset:", df.columns.tolist())
 st.write("BMI sample data:", df['BMI'].head())
 st.write("BMI dtype:", df['BMI'].dtype)
@@ -92,7 +111,7 @@ if st.button('Predict'):
     st.subheader('Prediction')
     st.write('Has Hypertension: Yes' if pred == 1 else 'Has Hypertension: No')
     st.progress(int(prob * 100))
-    st.write('Probability of hypertension: {:.2f}%'.format(prob * 100))
+    st.write(f'Probability of hypertension: {prob * 100:.2f}%')
 
 if st.button('Retrain model'):
     with st.spinner('Retraining...'):
@@ -100,4 +119,4 @@ if st.button('Retrain model'):
     st.success('Model retrained and saved to hypertension_model.pkl')
 
 st.markdown('---')
-st.write('Dataset rows:', len(df))
+st.write(f'Dataset rows: {len(df)}')
