@@ -20,7 +20,7 @@ except Exception as e:
     st.error(f"Failed to load dataset: {e}")
     st.stop()
 
-# Show debug columns
+# Debug: Show cleaned column names
 st.write("Dataset Columns (cleaned):", df.columns.tolist())
 
 # Check for expected features
@@ -35,20 +35,24 @@ if missing_feats:
     st.error(f"Missing expected columns: {missing_feats}")
     st.stop()
 
-# Convert numeric columns safely to float
+# Convert numeric columns safely to float, handling any non-numeric values
 for col in expected_numeric:
     if col not in df.columns:
         st.error(f"Missing expected column: {col}")
         st.stop()
-    # Convert column to numeric, invalid parsing will turn into NaN
+    
+    # Try to convert column to numeric, invalid parsing will turn into NaN
     df[col] = pd.to_numeric(df[col], errors='coerce')
+    if df[col].isnull().any():
+        st.warning(f"Column {col} contains non-numeric values and has been converted to NaN. Filling NaN with median.")
+        df[col].fillna(df[col].median(), inplace=True)  # Fill NaNs with median
 
 # Ensure all categorical columns are of type 'str'
 for col in expected_cat:
     if col not in df.columns:
         st.error(f"Missing expected column: {col}")
         st.stop()
-    df[col] = df[col].astype(str).str.strip()  # Make sure they're treated as strings
+    df[col] = df[col].astype(str).str.strip()  # Ensure they're treated as strings
 
 # Clean target column
 if 'Has_Hypertension' not in df.columns:
@@ -106,6 +110,7 @@ def train_and_save():
     joblib.dump(model_pipeline, 'hypertension_model.pkl')
     return model_pipeline
 
+# Train and save the model
 model = train_and_save()
 
 # Sidebar for inputs
