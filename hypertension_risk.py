@@ -43,10 +43,6 @@ def ensure_min_max_for_input(col_series, default_min=None, default_max=None):
         return (default_min if default_min is not None else 0, default_max if default_max is not None else 1)
     mn = float(col_series.min())
     mx = float(col_series.max())
-
-    
-    
-    
     if mn == mx:
         # widen range a bit
       mn = mn - abs(mn * 0.1) - 1
@@ -267,6 +263,7 @@ if st.button('Retrain model'):
 
 st.markdown('---')
 st.write('Dataset rows:', len(df))
+
 
 
 
