@@ -11,9 +11,10 @@ import streamlit as st
 #st.set_page_config(page_title='Hypertension Predictor', layout='centered')
 
 df = pd.read_csv('hypertension_dataset.csv')
-#st.write("Actual columns:", df.columns.tolist())
-df.columns = df.columns.str.strip().str.replace(' ', '_')
+st.write("Available columns:", df.columns.tolist())
 
+df.columns = df.columns.str.strip().str.replace(' ', '_')
+'''
 #df['Salt_Intake'] = pd.to_numeric(df['Salt_Intake'], errors='coerce')  
 
 numeric_cols = ['Age', 'Salt_Intake', 'Stress_Score', 'Sleep_Duration', 'BMI']
@@ -95,6 +96,7 @@ if st.button('Retrain model'):
 st.markdown('---')
 st.write('Dataset rows:', len(df))
 
+'''
 
 
 
