@@ -7,7 +7,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 import joblib
 import streamlit as st
-st.set_page_config(page_title='Hypertension Predictor', layout='centered')
+
 
 df = pd.read_csv('hypertension_dataset.csv')
 
@@ -35,6 +35,7 @@ def train_and_save():
     return model_pipeline
 
 model = train_and_save()
+st.set_page_config(page_title='Hypertension Predictor', layout='centered')
 
 
 st.title('Hypertension Predictor')
@@ -79,4 +80,5 @@ if st.button('Retrain model'):
 
 st.markdown('---')
 st.write('Dataset rows:', len(df))
+
 
