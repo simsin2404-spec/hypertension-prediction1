@@ -1,4 +1,3 @@
-st.set_page_config(page_title='Hypertension Predictor', layout='centered')
 import pandas as pd
 import numpy as np
 from sklearn.pipeline import Pipeline
@@ -8,27 +7,31 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 import joblib
 import streamlit as st
-#st.set_page_config(page_title='Hypertension Predictor', layout='centered')
 
+st.set_page_config(page_title='Hypertension Predictor', layout='centered')
+
+# Load data and clean column names
 df = pd.read_csv('hypertension_dataset.csv')
-#st.write("Available columns:", df.columns.tolist())
+df.columns = df.columns.str.strip().str.replace(' ', '_').str.replace(r'[\n\r\t]', '', regex=True)
 
-df.columns = df.columns.str.strip().str.replace(' ', '_')
-
-#df = pd.read_csv('hypertension_dataset.csv')
-st.write("Columns immediately after loading:", df.columns.tolist())
-st.write("BMI column sample right after loading:", df['BMI'].head())
-st.write("BMI dtype right after loading:", df['BMI'].dtype)
-
-'''
-#df['Salt_Intake'] = pd.to_numeric(df['Salt_Intake'], errors='coerce')  
-
+# Convert numeric columns to numeric dtype, coerce errors to NaN, then fill with median
 numeric_cols = ['Age', 'Salt_Intake', 'Stress_Score', 'Sleep_Duration', 'BMI']
-cat_cols = ['BP_History', 'Medication', 'Family_History', 'Exercise_Level', 'Smoking_Status']
+for col in numeric_cols:
+    df[col] = pd.to_numeric(df[col], errors='coerce')
+    median_val = df[col].median()
+    df[col].fillna(median_val, inplace=True)
 
+# Check for missing columns in categorical columns too
+cat_cols = ['BP_History', 'Medication', 'Family_History', 'Exercise_Level', 'Smoking_Status']
+for col in cat_cols:
+    if col not in df.columns:
+        st.error(f"Missing expected categorical column: {col}")
+
+# Create X and y datasets
 X = df[numeric_cols + cat_cols]
 y = df['Has_Hypertension'].map({'Yes': 1, 'No': 0})
 
+# Build preprocessor and model pipeline
 preprocessor = ColumnTransformer([
     ('num', StandardScaler(), numeric_cols),
     ('cat', OneHotEncoder(handle_unknown='ignore', sparse_output=False), cat_cols)
@@ -41,6 +44,7 @@ model_pipeline = Pipeline([
 
 @st.cache_resource
 def train_and_save():
+    # Use global df here if needed
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
     model_pipeline.fit(X_train, y_train)
     joblib.dump(model_pipeline, 'hypertension_model.pkl')
@@ -48,18 +52,14 @@ def train_and_save():
 
 model = train_and_save()
 
-
-
 st.title('Hypertension Predictor')
-st.write("Columns:", df.columns.tolist())
-st.write("BMI column sample:", df['BMI'].head())
-st.write("BMI column type:", df['BMI'].dtype)
+
+# Show some info about dataset
 st.write("Columns in dataset:", df.columns.tolist())
-st.write("Salt_Intake sample:", df['Salt_Intake'].head())
-st.write("Salt_Intake type:", df['Salt_Intake'].dtype)
-
-
-
+st.write("BMI sample data:", df['BMI'].head())
+st.write("BMI dtype:", df['BMI'].dtype)
+st.write("Salt_Intake sample data:", df['Salt_Intake'].head())
+st.write("Salt_Intake dtype:", df['Salt_Intake'].dtype)
 
 with st.sidebar:
     age = st.number_input('Age', int(df['Age'].min()), int(df['Age'].max()), int(df['Age'].median()))
@@ -101,11 +101,3 @@ if st.button('Retrain model'):
 
 st.markdown('---')
 st.write('Dataset rows:', len(df))
-
-'''
-
-
-
-
-
-
